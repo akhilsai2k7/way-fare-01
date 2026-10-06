@@ -1,0 +1,1237 @@
+You are the lead full-stack engineer, software architect, UI/UX engineer, database architect, security engineer and QA engineer for this project.
+
+PROJECT NAME:
+Smart Carpooling Platform
+
+PROBLEM STATEMENT:
+Build a platform that connects people traveling along similar routes to share rides.
+
+REFERENCE:
+The provided reference image shows the assigned hackathon problem statement:
+- Problem ID: T1
+- Title: Smart Carpooling Platform
+- Domain: Transportation & Mobility
+- Description: Build a platform that connects people traveling along similar routes to share rides.
+- Detailed requirement: Build a platform that connects people traveling along similar routes to share rides.
+- Expected outcome: A working full-stack carpooling platform/prototype.
+
+IMPORTANT:
+This is NOT a simple landing page.
+Build a complete production-quality full-stack web application.
+
+==================================================
+1. TECHNOLOGY STACK
+==================================================
+
+Use:
+
+Frontend:
+- Next.js latest stable version
+- App Router
+- TypeScript
+- Tailwind CSS
+- shadcn/ui
+- Lucide icons
+- Responsive design
+- Mobile-first architecture
+
+Backend:
+- Supabase
+- Supabase Auth
+- Supabase PostgreSQL
+- Supabase Row Level Security
+- Supabase Realtime where useful
+- Supabase Storage where useful
+- Supabase Edge Functions only when server-side logic is actually required
+
+DO NOT create a separate custom backend server unless absolutely necessary.
+
+Database:
+- Supabase PostgreSQL
+
+Authentication:
+- Supabase Auth
+
+Maps/location:
+- Design the architecture so a map/geocoding provider can be added cleanly.
+- Do not hard-code a proprietary map provider.
+- Initially create a provider abstraction so Google Maps / Mapbox / OpenStreetMap can be integrated later.
+
+Deployment:
+- The application must be deployable independently of Replit.
+- Do not depend on Replit-specific runtime features.
+- Do not use Replit Database.
+- Do not use Replit Auth.
+- Supabase must be the permanent backend.
+
+==================================================
+2. CORE ARCHITECTURE
+==================================================
+
+Create a clean scalable architecture.
+
+Suggested structure:
+
+app/
+components/
+components/ui/
+lib/
+lib/supabase/
+hooks/
+types/
+utils/
+services/
+supabase/
+supabase/migrations/
+public/
+
+Separate:
+- UI components
+- business logic
+- Supabase access
+- validation
+- types
+- reusable utilities
+
+Use server/client Supabase clients correctly.
+
+Use:
+- browser client for client components
+- server client for server components/server actions/route handlers
+
+Never expose privileged Supabase secrets to the browser.
+
+==================================================
+3. ENVIRONMENT VARIABLES
+==================================================
+
+Create:
+
+.env.example
+
+with:
+
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+
+If a server-side privileged key is genuinely required, use:
+
+SUPABASE_SERVICE_ROLE_KEY=
+
+BUT:
+- Never expose service-role keys to client-side code.
+- Never commit secrets.
+- Never put secrets directly into source files.
+
+The application must work after someone clones the GitHub repository and provides the environment variables.
+
+==================================================
+4. USER AUTHENTICATION
+==================================================
+
+Implement complete authentication using Supabase Auth.
+
+Features:
+
+- Sign up
+- Login
+- Logout
+- Forgot password
+- Reset password
+- Protected routes
+- Session persistence
+- Auth state handling
+- User profile creation
+- Profile editing
+
+Profile fields:
+
+- id
+- full_name
+- email
+- phone
+- profile_photo
+- gender (optional)
+- bio
+- home_location
+- preferred_transport
+- created_at
+- updated_at
+
+Do not unnecessarily collect sensitive personal information.
+
+==================================================
+5. USER ROLES
+==================================================
+
+Support:
+
+PASSENGER
+DRIVER
+ADMIN
+
+A user can eventually act as both driver and passenger.
+
+Do not create unnecessary separate authentication systems.
+
+==================================================
+6. MAIN USER FLOW
+==================================================
+
+The core flow should be:
+
+1. User opens platform.
+2. User signs up/logs in.
+3. User completes profile.
+4. User chooses:
+   - Find a Ride
+   - Offer a Ride
+5. User enters:
+   - Starting location
+   - Destination
+   - Date
+   - Time
+   - Number of seats
+6. Platform searches compatible rides.
+7. Platform calculates route similarity/matching score.
+8. User sees matching rides.
+9. User opens ride details.
+10. User requests to join.
+11. Driver accepts/rejects.
+12. Passenger receives status.
+13. Confirmed passengers appear in ride.
+14. Users can view upcoming rides.
+15. Ride can be completed/cancelled.
+16. Users can provide ratings/reviews after completed rides.
+
+==================================================
+7. HOME PAGE
+==================================================
+
+Create a polished modern homepage.
+
+Hero:
+
+"Share the Ride. Share the Journey."
+
+Supporting text explaining that users can find people traveling along similar routes and share rides.
+
+Primary CTA:
+"Find a Ride"
+
+Secondary CTA:
+"Offer a Ride"
+
+Include:
+
+- Navigation
+- Login/Register
+- Hero
+- Search ride section
+- How it works
+- Benefits
+- Safety section
+- Statistics section
+- Testimonials/demo content
+- Footer
+
+Do not make the page look like a generic AI-generated template.
+
+Use a strong transportation/mobility visual identity.
+
+==================================================
+8. FIND A RIDE
+==================================================
+
+Create:
+
+/find-ride
+
+Search fields:
+
+- From
+- To
+- Date
+- Departure time
+- Number of passengers
+
+Filters:
+
+- Departure time
+- Distance
+- Seats available
+- Maximum detour
+- Driver rating
+- Price
+- Vehicle type
+
+Results should be displayed as cards.
+
+Each card:
+
+- Driver photo
+- Driver name
+- Rating
+- Starting point
+- Destination
+- Departure time
+- Estimated arrival
+- Available seats
+- Vehicle
+- Price/contribution
+- Route match percentage
+- Request button
+
+Use realistic demo data only when database data doesn't exist.
+
+==================================================
+9. OFFER A RIDE
+==================================================
+
+Create:
+
+/offer-ride
+
+Driver enters:
+
+- Origin
+- Destination
+- Date
+- Departure time
+- Estimated arrival
+- Available seats
+- Vehicle information
+- Price/contribution per passenger
+- Maximum detour
+- Notes
+
+Validate all inputs.
+
+After submission:
+
+- Store ride in Supabase.
+- Show confirmation.
+- Show the ride in driver's dashboard.
+
+==================================================
+10. SMART MATCHING ENGINE
+==================================================
+
+This is the most important feature.
+
+Create a matching service.
+
+Inputs:
+
+Passenger:
+- origin
+- destination
+- date
+- preferred time
+- flexibility
+
+Driver ride:
+- origin
+- destination
+- date
+- departure time
+- available seats
+
+Calculate:
+
+- route similarity
+- origin proximity
+- destination proximity
+- time compatibility
+- available seats
+- detour tolerance
+
+Create a score between 0 and 100.
+
+Example conceptual scoring:
+
+Route similarity: 40%
+Origin proximity: 20%
+Destination proximity: 20%
+Time compatibility: 15%
+Seat availability: 5%
+
+Make these weights configurable.
+
+Do not pretend the algorithm is real-world navigation accuracy if no map routing provider is configured.
+
+Create a clean matching service abstraction so a real routing API can be integrated later.
+
+==================================================
+11. RIDE DETAILS
+==================================================
+
+Create:
+
+/rides/[id]
+
+Show:
+
+- Driver
+- Driver rating
+- Route
+- Date
+- Departure
+- Arrival
+- Available seats
+- Vehicle
+- Contribution
+- Route match
+- Ride rules
+- Notes
+
+Actions:
+
+"Request to Join"
+
+"Cancel Request"
+
+"Contact Driver" - initially create an in-app messaging architecture.
+
+==================================================
+12. RIDE REQUEST SYSTEM
+==================================================
+
+Database entity:
+
+ride_requests
+
+Fields should include:
+
+- id
+- ride_id
+- passenger_id
+- seats_requested
+- status
+- message
+- created_at
+- updated_at
+
+Statuses:
+
+PENDING
+ACCEPTED
+REJECTED
+CANCELLED
+
+Driver dashboard must allow:
+
+- View pending requests
+- Accept
+- Reject
+- View passengers
+
+Passenger dashboard must allow:
+
+- View requests
+- See request status
+- Cancel pending request
+
+Prevent:
+- duplicate requests
+- joining cancelled rides
+- exceeding available seats
+- requesting one's own ride
+
+==================================================
+13. DASHBOARD
+==================================================
+
+Create a beautiful dashboard.
+
+Navigation:
+
+- Overview
+- Find Ride
+- Offer Ride
+- My Rides
+- Requests
+- Messages
+- Notifications
+- Profile
+- Settings
+
+Dashboard cards:
+
+- Upcoming rides
+- Active requests
+- Available rides
+- Completed rides
+- Total trips
+- Money saved
+- CO2 saved
+
+Use calculated values where possible.
+
+==================================================
+14. MY RIDES
+==================================================
+
+Create tabs:
+
+- Upcoming
+- Pending
+- Completed
+- Cancelled
+
+Each ride should show:
+
+- Route
+- Date
+- Time
+- Driver/passenger
+- Status
+- Seats
+- Price
+- Actions
+
+==================================================
+15. MESSAGING
+==================================================
+
+Create an in-app messaging system.
+
+Tables:
+
+conversations
+conversation_members
+messages
+
+Features:
+
+- Conversation list
+- Chat window
+- Send message
+- Message timestamps
+- Read status
+
+Use Supabase Realtime if appropriate.
+
+Do not implement external SMS/WhatsApp initially.
+
+==================================================
+16. NOTIFICATIONS
+==================================================
+
+Create notification system.
+
+Examples:
+
+- Ride request received
+- Ride request accepted
+- Ride request rejected
+- Ride cancelled
+- Ride reminder
+- New message
+- Profile update
+
+Create:
+
+notifications
+
+with:
+
+- id
+- user_id
+- type
+- title
+- message
+- read
+- metadata
+- created_at
+
+Use realtime notifications where practical.
+
+==================================================
+17. RATINGS AND REVIEWS
+==================================================
+
+After completed rides:
+
+Users can rate each other.
+
+Fields:
+
+- reviewer_id
+- reviewed_user_id
+- ride_id
+- rating
+- review
+- created_at
+
+Rating:
+
+1-5 stars.
+
+Prevent duplicate reviews for the same ride/user relationship.
+
+Calculate average user rating.
+
+==================================================
+18. SAFETY
+==================================================
+
+Create a safety-focused UX.
+
+Include:
+
+- Report user
+- Report ride
+- Block user
+- Safety guidelines
+- Emergency/help UI placeholder
+- Driver/passenger verification status architecture
+
+Do not claim that real emergency services are integrated unless actually implemented.
+
+==================================================
+19. DATABASE SCHEMA
+==================================================
+
+Create proper Supabase migrations.
+
+Suggested tables:
+
+profiles
+vehicles
+rides
+ride_requests
+ride_passengers
+conversations
+conversation_members
+messages
+notifications
+ratings
+reports
+blocked_users
+
+Potential fields:
+
+profiles:
+id UUID references auth.users
+full_name
+email
+phone
+avatar_url
+bio
+home_location
+created_at
+updated_at
+
+vehicles:
+id
+owner_id
+make
+model
+color
+license_plate
+vehicle_type
+created_at
+
+rides:
+id
+driver_id
+origin
+destination
+origin_lat
+origin_lng
+destination_lat
+destination_lng
+departure_date
+departure_time
+estimated_arrival_time
+available_seats
+price
+max_detour_km
+status
+notes
+created_at
+updated_at
+
+ride_requests:
+id
+ride_id
+passenger_id
+seats_requested
+status
+message
+created_at
+updated_at
+
+ride_passengers:
+id
+ride_id
+passenger_id
+seats
+joined_at
+
+messages:
+id
+conversation_id
+sender_id
+message
+read_at
+created_at
+
+notifications:
+id
+user_id
+type
+title
+message
+read
+metadata
+created_at
+
+ratings:
+id
+ride_id
+reviewer_id
+reviewed_user_id
+rating
+review
+created_at
+
+reports:
+id
+reporter_id
+reported_user_id
+ride_id
+reason
+description
+status
+created_at
+
+blocked_users:
+id
+blocker_id
+blocked_user_id
+created_at
+
+Use UUIDs.
+
+Use timestamps.
+
+Use foreign keys.
+
+Use indexes for:
+- ride dates
+- origin/destination
+- driver_id
+- passenger_id
+- status
+- notifications user_id
+- messages conversation_id
+
+==================================================
+20. ROW LEVEL SECURITY
+==================================================
+
+This is mandatory.
+
+Enable RLS on all user/application tables.
+
+Users should:
+
+- read public ride information
+- create their own rides
+- update/delete their own rides
+- create requests as themselves
+- view their own requests
+- drivers can manage requests for their own rides
+- users can update only their own profiles
+- conversation members can read their conversations
+- only conversation members can send/read messages
+- users can read/write their own notifications
+- users can create their own ratings
+- ratings should not be arbitrarily editable by other users
+
+Do not disable RLS for convenience.
+
+Do not use service-role access from the frontend.
+
+==================================================
+21. SECURITY
+==================================================
+
+Implement:
+
+- Input validation
+- Zod validation where useful
+- Authorization checks
+- RLS
+- Protected routes
+- Secure server actions
+- No secret keys in frontend
+- No hardcoded credentials
+- No SQL injection vulnerabilities
+- Safe error messages
+- Rate limiting architecture where appropriate
+
+==================================================
+22. UI/UX DESIGN
+==================================================
+
+Design should feel like a modern mobility startup.
+
+Visual direction:
+
+- Premium
+- Modern
+- Trustworthy
+- Clean
+- Fast
+- Accessible
+- Responsive
+
+Use:
+
+- Strong typography
+- Large readable headings
+- Rounded cards
+- Subtle shadows
+- Clean spacing
+- Clear CTA buttons
+- Good empty states
+- Loading states
+- Skeleton loaders
+- Toast notifications
+- Confirmation dialogs
+
+Do NOT overuse gradients.
+
+Do NOT make every section a floating glass card.
+
+Avoid generic AI-generated dashboard aesthetics.
+
+==================================================
+23. RESPONSIVE DESIGN
+==================================================
+
+Must work well on:
+
+- Desktop
+- Laptop
+- Tablet
+- Mobile
+
+Mobile navigation should use a proper mobile menu/bottom navigation where appropriate.
+
+Tables should become mobile-friendly cards.
+
+Maps/search components should remain usable on mobile.
+
+==================================================
+24. ACCESSIBILITY
+==================================================
+
+Implement:
+
+- Semantic HTML
+- Keyboard navigation
+- Proper labels
+- Focus states
+- ARIA where necessary
+- Color contrast
+- Accessible dialogs
+- Accessible forms
+
+==================================================
+25. ERROR HANDLING
+==================================================
+
+Every important operation must have:
+
+- Loading state
+- Success state
+- Error state
+- Empty state
+
+Never silently fail.
+
+Show useful user-friendly errors.
+
+Do not expose database internals to users.
+
+==================================================
+26. DEMO MODE
+==================================================
+
+Create realistic seed/demo data.
+
+The application should look complete even when the database is empty.
+
+But clearly separate demo/seed data from real user data.
+
+Do not mix fake data with real authenticated users.
+
+==================================================
+27. ADMIN DASHBOARD
+==================================================
+
+Create:
+
+/admin
+
+Admin features:
+
+- User count
+- Ride count
+- Active rides
+- Completed rides
+- Reports
+- User management
+- Ride management
+- Basic platform statistics
+
+Admin authorization must be enforced server-side/database-side.
+
+Do not simply hide the admin route in the UI.
+
+==================================================
+28. PERFORMANCE
+==================================================
+
+Optimize for:
+
+- Fast initial load
+- Server components where appropriate
+- Efficient database queries
+- Pagination
+- Lazy loading
+- Image optimization
+- Avoid unnecessary client components
+- Avoid unnecessary realtime subscriptions
+
+==================================================
+29. SEO
+==================================================
+
+Add:
+
+- Metadata
+- Page titles
+- Descriptions
+- Open Graph metadata
+- robots
+- sitemap where appropriate
+
+==================================================
+30. TESTING
+==================================================
+
+Add tests for critical functionality.
+
+At minimum test:
+
+- Authentication
+- Ride creation
+- Ride search
+- Matching algorithm
+- Ride request
+- Accept/reject request
+- Seat availability
+- Authorization
+- Rating
+- RLS-sensitive operations
+
+Also perform browser-based testing for the major user flows.
+
+==================================================
+31. GIT/GITHUB COMPATIBILITY
+==================================================
+
+The project MUST be portable.
+
+Do not depend on:
+
+- Replit-specific database
+- Replit Auth
+- Replit-only APIs
+- Replit-only runtime behavior
+
+Create:
+
+README.md
+
+with complete instructions for:
+
+1. Clone repository
+2. Install dependencies
+3. Create Supabase project
+4. Run migrations
+5. Configure environment variables
+6. Run development server
+7. Run tests
+8. Build production version
+9. Deploy
+
+Create:
+
+.env.example
+
+Never commit:
+
+.env
+.env.local
+secrets
+API keys
+service role keys
+
+==================================================
+32. SUPABASE MIGRATIONS
+==================================================
+
+All database schema changes must be represented as SQL migrations inside:
+
+supabase/migrations/
+
+Do NOT create an undocumented database structure manually.
+
+The database should be reproducible.
+
+Include:
+
+- tables
+- indexes
+- constraints
+- RLS
+- policies
+- triggers if needed
+- functions if needed
+- seed data where appropriate
+
+==================================================
+33. DOCUMENTATION
+==================================================
+
+Create:
+
+README.md
+ARCHITECTURE.md
+DATABASE.md
+SECURITY.md
+DEPLOYMENT.md
+
+Explain:
+
+- application architecture
+- folder structure
+- Supabase setup
+- database schema
+- authentication
+- RLS
+- matching algorithm
+- environment variables
+- deployment
+- testing
+
+==================================================
+34. IMPORTANT DEVELOPMENT RULE
+==================================================
+
+Before making major changes:
+
+1. Inspect the existing project.
+2. Create a short implementation plan.
+3. Implement incrementally.
+4. Test the change.
+5. Fix errors.
+6. Verify the UI.
+7. Keep the code portable.
+8. Keep Git history clean.
+
+Do not rewrite working parts unnecessarily.
+
+Do not create duplicate components.
+
+Do not create duplicate database tables.
+
+Do not introduce unnecessary libraries.
+
+==================================================
+35. DEVELOPMENT PHASES
+==================================================
+
+Build in this order:
+
+PHASE 1
+Project setup
+- Next.js
+- TypeScript
+- Tailwind
+- shadcn/ui
+- Supabase client
+- environment configuration
+
+PHASE 2
+Database
+- schema
+- migrations
+- RLS
+- indexes
+- seed/demo data
+
+PHASE 3
+Authentication
+- signup
+- login
+- logout
+- profile
+- protected routes
+
+PHASE 4
+Core rides
+- offer ride
+- find ride
+- ride details
+- search/filter
+
+PHASE 5
+Matching
+- matching algorithm
+- compatibility scoring
+- route abstraction
+
+PHASE 6
+Requests
+- request ride
+- accept/reject
+- seat management
+
+PHASE 7
+Dashboard
+- user dashboard
+- driver dashboard
+- passenger dashboard
+- my rides
+
+PHASE 8
+Messaging
+- conversations
+- messages
+- realtime
+
+PHASE 9
+Notifications
+
+PHASE 10
+Ratings/reviews
+
+PHASE 11
+Safety/reporting
+
+PHASE 12
+Admin
+
+PHASE 13
+Testing/security
+
+PHASE 14
+Performance/accessibility/SEO
+
+PHASE 15
+Production polish
+
+==================================================
+36. CRITICAL REQUIREMENT FOR THIS BUILD
+==================================================
+
+Do NOT stop after creating the frontend.
+
+The final result must be a genuine full-stack application.
+
+I must be able to:
+
+- Register
+- Login
+- Create a profile
+- Offer a ride
+- Search rides
+- See matching rides
+- Request a ride
+- Accept/reject requests
+- Track ride status
+- See upcoming rides
+- Message another user
+- Receive notifications
+- Complete a ride
+- Rate another user
+- Report a user/ride
+- Manage profile
+
+All important data must persist in Supabase.
+
+==================================================
+37. FINAL VERIFICATION
+==================================================
+
+Before declaring the project complete:
+
+Run:
+
+npm install
+npm run lint
+npm run build
+
+Run available tests.
+
+Open the application in the browser.
+
+Test:
+
+1. Register
+2. Login
+3. Create profile
+4. Offer ride
+5. Search ride
+6. View ride
+7. Request ride
+8. Accept request
+9. Verify seat count
+10. Open dashboard
+11. Send message
+12. Receive notification
+13. Complete ride
+14. Submit rating
+15. Logout
+16. Login again
+17. Verify persistent data
+
+Fix every blocking error.
+
+==================================================
+38. FINAL OUTPUT
+==================================================
+
+At the end, provide:
+
+- What was implemented
+- Technology stack
+- Database schema
+- Supabase setup status
+- Authentication status
+- RLS status
+- Main routes
+- Test results
+- Build result
+- Known limitations
+- Exact commands to run locally
+- Exact environment variables required
+
+Most importantly:
+
+BUILD THE APPLICATION, NOT JUST A PLAN.
+
+Do not ask unnecessary questions.
+
+Make sensible engineering decisions when details are unspecified.
+
+Prioritize a working, maintainable, portable full-stack application over excessive features.
+
+The application must be ready to push to GitHub and continue development in another IDE such as Google Antigravity.

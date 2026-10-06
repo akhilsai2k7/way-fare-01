@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Smart Carpooling Platform"
+description = "A carpool marketplace that matches people on similar routes, coordinates ride requests, and helps drivers and passengers travel together."
+version = "1.0.0"
+id = "artifacts/smart-carpool"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21772
+
+[services.development]
+run = "pnpm --filter @workspace/smart-carpool run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/smart-carpool", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/smart-carpool/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21772"
+BASE_PATH = "/"
