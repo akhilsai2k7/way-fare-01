@@ -54,6 +54,8 @@ export type CarpoolContextValue = {
   signUp: (email: string, password: string, fullName: string) => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  resetPasswordForEmail: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
   searchRides: (filters: RideSearchFilters) => Promise<Ride[]>;
   createRide: (input: CreateRideInput) => Promise<Ride>;
   requestRide: (rideId: string, seats: number, message?: string) => Promise<void>;
@@ -248,6 +250,9 @@ function getSafeError(error: unknown): string {
   if (businessMessages.has(message)) return message;
   if (code === '23505') return 'This action has already been completed.';
   if (code === '23514') return 'Some details are outside the allowed range.';
+  if (code === 'PGRST205') {
+    return 'Database tables not found. Please apply the migration in your Supabase SQL Editor.';
+  }
   if (code === '42501' || code === 'PGRST301') {
     return 'You do not have permission to do that.';
   }
@@ -654,6 +659,42 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setError(null);
   }, [handleFailure]);
+
+  const resetPasswordForEmail = useCallback(
+    async (email: string) => {
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase is not configured.');
+      }
+      try {
+        const client = requireSupabase();
+        const { error: resetError } = await client.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: `${window.location.origin}/auth?mode=reset`,
+        });
+        if (resetError) throw resetError;
+      } catch (caught) {
+        handleFailure(caught);
+      }
+    },
+    [handleFailure],
+  );
+
+  const updatePassword = useCallback(
+    async (password: string) => {
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase is not configured.');
+      }
+      try {
+        const client = requireSupabase();
+        const { error: updateError } = await client.auth.updateUser({
+          password,
+        });
+        if (updateError) throw updateError;
+      } catch (caught) {
+        handleFailure(caught);
+      }
+    },
+    [handleFailure],
+  );
 
   const searchRides = useCallback(
     async (filters: RideSearchFilters) => {
@@ -1273,6 +1314,8 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
       signUp,
       signIn,
       signOut,
+      resetPasswordForEmail,
+      updatePassword,
       searchRides,
       createRide,
       requestRide,
@@ -1306,6 +1349,8 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
       signUp,
       signIn,
       signOut,
+      resetPasswordForEmail,
+      updatePassword,
       searchRides,
       createRide,
       requestRide,

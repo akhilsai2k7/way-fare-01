@@ -184,10 +184,163 @@ function SettingsPage({data}:any){
 }
 
 function AuthPage({data}:any){
- const [mode,setMode]=useState<'signin'|'signup'>('signin');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [name,setName]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [,navigate]=useLocation();
- const submit=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setError('');data.clearError();try{if(mode==='signup'){const signedIn=await data.signUp(email,password,name);if(!signedIn){setError('Check your email to confirm your account, then sign in.');return;}}else await data.signIn(email,password);navigate('/dashboard');}catch(e:any){setError(e.message||'We couldn’t sign you in. Check your details and try again.');}finally{setBusy(false);}};
- const continueAs=(role:'PASSENGER'|'ADMIN')=>{data.enterDemo(role);navigate('/dashboard');};
- return <div className="auth-page"><div className="auth-aside"><Link href="/" className="brand"><span className="brand-mark"><ArrowDownUp size={18}/></span><span>wayfare<span className="brand-period">.</span></span></Link><div className="auth-aside-copy"><div className="eyebrow eyebrow-light">THE COMMUTE, SHARED</div><h1>Somewhere<br/>along the way,<br/><em>you’ll meet.</em></h1><p>Make room for a better everyday route.</p></div><div className="auth-aside-foot"><ShieldCheck size={16}/> Community profiles. Thoughtful rides.</div></div><div className="auth-form-side"><div className="auth-form-wrap"><div className="auth-mobile-brand"><Link href="/" className="brand"><span className="brand-mark"><ArrowDownUp size={18}/></span><span>wayfare<span className="brand-period">.</span></span></Link></div><div className="eyebrow">{mode==='signin'?'WELCOME BACK':'A BETTER WAY TO GO'}</div><h2>{mode==='signin'?'Good to see you.':'Join the way there.'}</h2><p>{mode==='signin'?'Your next shared commute is just ahead.':'Meet the people who are already heading your way.'}</p><div className="auth-mode"><button type="button" className={mode==='signin'?'active':''} onClick={()=>setMode('signin')}>Sign in</button><button type="button" className={mode==='signup'?'active':''} onClick={()=>setMode('signup')}>Create account</button></div><form onSubmit={submit} className="auth-form">{mode==='signup'&&<label className="input-field"><span>Your full name</span><input value={name} onChange={e=>setName(e.target.value)} autoComplete="name" required placeholder="e.g. Avery Rao"/></label>}<label className="input-field"><span>Email address</span><input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" required placeholder="you@example.com"/></label><label className="input-field"><span>Password</span><input type="password" minLength={6} value={password} onChange={e=>setPassword(e.target.value)} autoComplete={mode==='signin'?'current-password':'new-password'} required placeholder="At least 6 characters"/></label>{error&&<div className="inline-alert" role="alert">{error}</div>}<Button type="submit" disabled={busy} className="full-width">{busy?'One moment…':mode==='signin'?'Sign in to Wayfare':'Create your account'} <ArrowRight size={16}/></Button></form>{!data.isBackendConfigured&&<div className="demo-actions"><span className="eyebrow">SAMPLE DATA ONLY · STORED IN THIS BROWSER</span><Button type="button" variant="soft" onClick={()=>continueAs('PASSENGER')}>Continue as demo commuter</Button><Button type="button" variant="soft" onClick={()=>continueAs('ADMIN')}>Open demo admin</Button></div>}<div className="auth-terms">By continuing, you agree to keep this community kind, considerate, and safe for everyone.</div><div className="auth-mode-status"><span className={`mode-pill ${data.isBackendConfigured?'mode-live':'mode-demo'}`}><i/>{data.isBackendConfigured?'Live account':'Demo mode'}</span></div></div></div></div>
+  const [params] = useState(() => new URLSearchParams(window.location.search));
+  const isRecoveryInHash = typeof window !== 'undefined' && window.location.hash.includes('type=recovery');
+  const [mode, setMode] = useState<'signin'|'signup'|'forgot'|'reset'>(() => {
+    if (params.get('mode') === 'reset' || isRecoveryInHash) return 'reset';
+    return 'signin';
+  });
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [, navigate] = useLocation();
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    setSuccess('');
+    data.clearError();
+    try {
+      if (mode === 'signup') {
+        const signedIn = await data.signUp(email, password, name);
+        if (!signedIn) {
+          setSuccess('Check your email to confirm your account, then sign in.');
+          return;
+        }
+        navigate('/dashboard');
+      } else if (mode === 'signin') {
+        await data.signIn(email, password);
+        navigate('/dashboard');
+      } else if (mode === 'forgot') {
+        await data.resetPasswordForEmail(email);
+        setSuccess('Password reset link sent! Please check your email inbox to proceed.');
+      } else if (mode === 'reset') {
+        await data.updatePassword(password);
+        setSuccess('Password updated successfully! Redirecting...');
+        setTimeout(() => navigate('/dashboard'), 1500);
+      }
+    } catch (e: any) {
+      setError(e.message || 'We couldn’t complete your request. Check your details and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const continueAs = (role: 'PASSENGER' | 'ADMIN') => {
+    data.enterDemo(role);
+    navigate('/dashboard');
+  };
+
+  return (
+    <div className="auth-page">
+      <div className="auth-aside">
+        <Link href="/" className="brand">
+          <span className="brand-mark"><ArrowDownUp size={18}/></span>
+          <span>wayfare<span className="brand-period">.</span></span>
+        </Link>
+        <div className="auth-aside-copy">
+          <div className="eyebrow eyebrow-light">THE COMMUTE, SHARED</div>
+          <h1>Somewhere<br/>along the way,<br/><em>you’ll meet.</em></h1>
+          <p>Make room for a better everyday route.</p>
+        </div>
+        <div className="auth-aside-foot"><ShieldCheck size={16}/> Community profiles. Thoughtful rides.</div>
+      </div>
+      <div className="auth-form-side">
+        <div className="auth-form-wrap">
+          <div className="auth-mobile-brand">
+            <Link href="/" className="brand">
+              <span className="brand-mark"><ArrowDownUp size={18}/></span>
+              <span>wayfare<span className="brand-period">.</span></span>
+            </Link>
+          </div>
+          <div className="eyebrow">
+            {mode === 'signin' ? 'WELCOME BACK' : mode === 'signup' ? 'A BETTER WAY TO GO' : mode === 'forgot' ? 'ACCOUNT RECOVERY' : 'NEW CREDENTIALS'}
+          </div>
+          <h2>
+            {mode === 'signin' ? 'Good to see you.' : mode === 'signup' ? 'Join the way there.' : mode === 'forgot' ? 'Reset password' : 'Set new password'}
+          </h2>
+          <p>
+            {mode === 'signin'
+              ? 'Your next shared commute is just ahead.'
+              : mode === 'signup'
+              ? 'Meet the people who are already heading your way.'
+              : mode === 'forgot'
+              ? 'Enter your email address to receive a secure recovery link.'
+              : 'Choose a strong new password for your account.'}
+          </p>
+
+          {(mode === 'signin' || mode === 'signup') && (
+            <div className="auth-mode">
+              <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => { setMode('signin'); setError(''); setSuccess(''); }}>Sign in</button>
+              <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); setError(''); setSuccess(''); }}>Create account</button>
+            </div>
+          )}
+
+          <form onSubmit={submit} className="auth-form">
+            {mode === 'signup' && (
+              <label className="input-field">
+                <span>Your full name</span>
+                <input value={name} onChange={e => setName(e.target.value)} autoComplete="name" required placeholder="e.g. Avery Rao"/>
+              </label>
+            )}
+
+            {(mode === 'signin' || mode === 'signup' || mode === 'forgot') && (
+              <label className="input-field">
+                <span>Email address</span>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required placeholder="you@example.com"/>
+              </label>
+            )}
+
+            {(mode === 'signin' || mode === 'signup' || mode === 'reset') && (
+              <label className="input-field">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{mode === 'reset' ? 'New password' : 'Password'}</span>
+                  {mode === 'signin' && (
+                    <button type="button" style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', opacity: 0.7, fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}>
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <input type="password" minLength={6} value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required placeholder="At least 6 characters"/>
+              </label>
+            )}
+
+            {error && <div className="inline-alert" role="alert">{error}</div>}
+            {success && <div className="inline-alert" style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', color: '#047857' }} role="status">{success}</div>}
+
+            <Button type="submit" disabled={busy} className="full-width">
+              {busy ? 'One moment…' : mode === 'signin' ? 'Sign in to Wayfare' : mode === 'signup' ? 'Create your account' : mode === 'forgot' ? 'Send reset link' : 'Update password'} <ArrowRight size={16}/>
+            </Button>
+
+            {(mode === 'forgot' || mode === 'reset') && (
+              <button type="button" style={{ background: 'none', border: 'none', padding: '8px 0', color: 'inherit', opacity: 0.8, fontSize: '0.85rem', cursor: 'pointer', textAlign: 'center' }} onClick={() => { setMode('signin'); setError(''); setSuccess(''); }}>
+                ← Back to sign in
+              </button>
+            )}
+          </form>
+
+          {!data.isBackendConfigured && (
+            <div className="demo-actions">
+              <span className="eyebrow">SAMPLE DATA ONLY · STORED IN THIS BROWSER</span>
+              <Button type="button" variant="soft" onClick={() => continueAs('PASSENGER')}>Continue as demo commuter</Button>
+              <Button type="button" variant="soft" onClick={() => continueAs('ADMIN')}>Open demo admin</Button>
+            </div>
+          )}
+
+          <div className="auth-terms">By continuing, you agree to keep this community kind, considerate, and safe for everyone.</div>
+          <div className="auth-mode-status">
+            <span className={`mode-pill ${data.isBackendConfigured ? 'mode-live' : 'mode-demo'}`}>
+              <i/>{data.isBackendConfigured ? 'Live account' : 'Demo mode'}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 function AdminPage({data}:any){
  const [error,setError]=useState('');
