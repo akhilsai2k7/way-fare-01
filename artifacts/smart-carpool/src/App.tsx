@@ -1,15 +1,15 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { CarpoolProvider, useCarpool } from '@/lib/carpool-context';
 import {
-  ArrowDownUp, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
+  ArrowDownUp, ArrowLeft, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
   CircleHelp, Clock3, Compass, CreditCard, Gauge, HeartHandshake,
-  CarFront, Inbox, Leaf, LogOut, MapPin, Menu, MessageCircle, MoreHorizontal, Navigation,
+  CarFront, Inbox, Leaf, LogOut, Mail, MapPin, Menu, MessageCircle, MoreHorizontal, Navigation, Phone,
   Plus, Search, Send, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Star,
-  Users,
+  Users, RefreshCw,
 } from 'lucide-react';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
 
@@ -190,16 +190,41 @@ function AuthPage({data}:any){
     if (params.get('mode') === 'reset' || isRecoveryInHash) return 'reset';
     return 'signin';
   });
+  const [authMethod, setAuthMethod] = useState<'otp'|'password'>(() =>
+    params.get('mode') === 'reset' || isRecoveryInHash ? 'password' : 'otp',
+  );
+  const [otpChannel, setOtpChannel] = useState<'phone'|'email'>('phone');
+  const [otpStep, setOtpStep] = useState<'identifier'|'verify'>('identifier');
+  const [identifier, setIdentifier] = useState('');
+  const [otp, setOtp] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const submittingRef = useRef(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [, navigate] = useLocation();
 
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(() => {
+      setResendCooldown((remaining) => Math.max(0, remaining - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const clearMessages = () => {
+    setError('');
+    setSuccess('');
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setBusy(true);
     setError('');
     setSuccess('');
@@ -226,8 +251,84 @@ function AuthPage({data}:any){
     } catch (e: any) {
       setError(e.message || 'We couldn’t complete your request. Check your details and try again.');
     } finally {
+      submittingRef.current = false;
       setBusy(false);
     }
+  };
+
+  const requestOtp = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (submittingRef.current) return;
+
+    const normalizedIdentifier = otpChannel === 'email'
+      ? identifier.trim().toLowerCase()
+      : identifier.trim().replace(/[\s().-]/g, '');
+    if (otpChannel === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedIdentifier)) {
+      setError('Enter a valid email address.');
+      return;
+    }
+    if (otpChannel === 'phone' && !/^\+[1-9]\d{7,14}$/.test(normalizedIdentifier)) {
+      setError('Enter a valid number with country code, such as +91 98765 43210.');
+      return;
+    }
+
+    submittingRef.current = true;
+    setBusy(true);
+    clearMessages();
+    data.clearError();
+    try {
+      await data.sendOtp(otpChannel, normalizedIdentifier, fullName);
+      setIdentifier(normalizedIdentifier);
+      setOtp('');
+      setOtpStep('verify');
+      setResendCooldown(30);
+      setSuccess(`A verification code was sent to ${normalizedIdentifier}.`);
+    } catch (e: any) {
+      setError(e?.message || 'We could not send a verification code. Please try again.');
+    } finally {
+      submittingRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const verifyOtp = async (e: FormEvent) => {
+    e.preventDefault();
+    if (submittingRef.current) return;
+    if (!/^\d{6,8}$/.test(otp.trim())) {
+      setError('Enter the verification code from your message.');
+      return;
+    }
+
+    submittingRef.current = true;
+    setBusy(true);
+    clearMessages();
+    data.clearError();
+    try {
+      await data.verifyOtp(otpChannel, identifier, otp.trim());
+      navigate('/dashboard');
+    } catch (e: any) {
+      setError(e?.message || 'That code could not be verified. Request a new code and try again.');
+    } finally {
+      submittingRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const changeAuthMethod = (method: 'otp'|'password') => {
+    setAuthMethod(method);
+    setMode('signin');
+    setOtpStep('identifier');
+    setOtp('');
+    setResendCooldown(0);
+    clearMessages();
+  };
+
+  const changeOtpChannel = (channel: 'phone'|'email') => {
+    setOtpChannel(channel);
+    setOtpStep('identifier');
+    setOtp('');
+    setResendCooldown(0);
+    clearMessages();
   };
 
   const continueAs = (role: 'PASSENGER' | 'ADMIN') => {
@@ -238,16 +339,36 @@ function AuthPage({data}:any){
   return (
     <div className="auth-page">
       <div className="auth-aside">
-        <Link href="/" className="brand">
-          <span className="brand-mark"><ArrowDownUp size={18}/></span>
-          <span>wayfare<span className="brand-period">.</span></span>
-        </Link>
-        <div className="auth-aside-copy">
-          <div className="eyebrow eyebrow-light">THE COMMUTE, SHARED</div>
-          <h1>Somewhere<br/>along the way,<br/><em>you’ll meet.</em></h1>
-          <p>Make room for a better everyday route.</p>
+        <div className="auth-brand-row">
+          <Link href="/" className="brand">
+            <span className="brand-mark"><ArrowDownUp size={18}/></span>
+            <span>wayfare<span className="brand-period">.</span></span>
+          </Link>
+          <span className="auth-brand-caption">COMMUNITY-POWERED COMMUTES</span>
         </div>
-        <div className="auth-aside-foot"><ShieldCheck size={16}/> Community profiles. Thoughtful rides.</div>
+        <div className="auth-aside-copy">
+          <div className="eyebrow eyebrow-light"><span className="auth-live-dot"/> EVERYDAY, BETTER CONNECTED</div>
+          <h1>Find your people.<br/><em>Share your journey.</em></h1>
+          <p>Smarter commutes begin with the people already headed your way.</p>
+        </div>
+        <div className="auth-journey" aria-hidden="true">
+          <div className="auth-journey-top"><span>COMMUNITY ROUTE</span><span className="auth-journey-live"><i/> MATCHING NEARBY</span></div>
+          <div className="auth-journey-map">
+            <div className="auth-route-path"/>
+            <span className="auth-route-point auth-route-start"/>
+            <span className="auth-route-point auth-route-middle"/>
+            <span className="auth-route-point auth-route-end"/>
+            <span className="auth-route-car"><CarFront size={19}/></span>
+            <span className="auth-route-person auth-person-one">A</span>
+            <span className="auth-route-person auth-person-two">M</span>
+          </div>
+          <div className="auth-journey-locations">
+            <span><small>STARTING NEAR</small><b>Indiranagar</b></span>
+            <span><small>HEADING TO</small><b>Whitefield</b></span>
+          </div>
+          <div className="auth-journey-bottom"><span className="auth-people-stack"><i>A</i><i>M</i><i>+2</i></span><span>Good routes are better shared.</span><ArrowUpRight size={15}/></div>
+        </div>
+        <div className="auth-aside-foot"><ShieldCheck size={16}/><span>Thoughtful rides, with people along your route.</span><b>PRIVATE BY DESIGN</b></div>
       </div>
       <div className="auth-form-side">
         <div className="auth-form-wrap">
@@ -257,71 +378,121 @@ function AuthPage({data}:any){
               <span>wayfare<span className="brand-period">.</span></span>
             </Link>
           </div>
+          <div className="auth-panel-label"><ShieldCheck size={15}/><span>SECURE SIGN-IN</span></div>
           <div className="eyebrow">
-            {mode === 'signin' ? 'WELCOME BACK' : mode === 'signup' ? 'A BETTER WAY TO GO' : mode === 'forgot' ? 'ACCOUNT RECOVERY' : 'NEW CREDENTIALS'}
+            {authMethod === 'otp'
+              ? otpStep === 'verify' ? 'VERIFY YOUR ACCOUNT' : 'THE COMMUTE, SHARED'
+              : mode === 'signin' ? 'WELCOME BACK' : mode === 'signup' ? 'A BETTER WAY TO GO' : mode === 'forgot' ? 'ACCOUNT RECOVERY' : 'NEW CREDENTIALS'}
           </div>
           <h2>
-            {mode === 'signin' ? 'Good to see you.' : mode === 'signup' ? 'Join the way there.' : mode === 'forgot' ? 'Reset password' : 'Set new password'}
+            {authMethod === 'otp'
+              ? otpStep === 'verify' ? 'Enter your code.' : 'Good to see you.'
+              : mode === 'signin' ? 'Good to see you.' : mode === 'signup' ? 'Join the way there.' : mode === 'forgot' ? 'Reset password' : 'Set new password'}
           </h2>
           <p>
-            {mode === 'signin'
-              ? 'Your next shared commute is just ahead.'
-              : mode === 'signup'
-              ? 'Meet the people who are already heading your way.'
-              : mode === 'forgot'
-              ? 'Enter your email address to receive a secure recovery link.'
-              : 'Choose a strong new password for your account.'}
+            {authMethod === 'otp'
+              ? otpStep === 'verify'
+                ? `We sent a one-time code to ${identifier}.`
+                : 'Sign in or create an account with a one-time code.'
+              : mode === 'signin'
+                ? 'Your next shared commute is just ahead.'
+                : mode === 'signup'
+                  ? 'Meet the people who are already heading your way.'
+                  : mode === 'forgot'
+                    ? 'Enter your email address to receive a secure recovery link.'
+                    : 'Choose a strong new password for your account.'}
           </p>
 
           {(mode === 'signin' || mode === 'signup') && (
-            <div className="auth-mode">
-              <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => { setMode('signin'); setError(''); setSuccess(''); }}>Sign in</button>
-              <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); setError(''); setSuccess(''); }}>Create account</button>
+            <div className="auth-method-tabs" role="tablist" aria-label="Sign-in method">
+              <button type="button" role="tab" aria-selected={authMethod === 'otp'} className={authMethod === 'otp' ? 'active' : ''} disabled={busy} onClick={() => changeAuthMethod('otp')}>One-time code</button>
+              <button type="button" role="tab" aria-selected={authMethod === 'password'} className={authMethod === 'password' ? 'active' : ''} disabled={busy} onClick={() => changeAuthMethod('password')}>Password</button>
             </div>
           )}
 
-          <form onSubmit={submit} className="auth-form">
-            {mode === 'signup' && (
-              <label className="input-field">
-                <span>Your full name</span>
-                <input value={name} onChange={e => setName(e.target.value)} autoComplete="name" required placeholder="e.g. Avery Rao"/>
-              </label>
-            )}
-
-            {(mode === 'signin' || mode === 'signup' || mode === 'forgot') && (
-              <label className="input-field">
-                <span>Email address</span>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required placeholder="you@example.com"/>
-              </label>
-            )}
-
-            {(mode === 'signin' || mode === 'signup' || mode === 'reset') && (
-              <label className="input-field">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>{mode === 'reset' ? 'New password' : 'Password'}</span>
-                  {mode === 'signin' && (
-                    <button type="button" style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', opacity: 0.7, fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}>
-                      Forgot password?
-                    </button>
-                  )}
+          {authMethod === 'otp' ? (
+            <>
+              {otpStep === 'identifier' && (
+                <div className="auth-mode auth-channel-tabs" role="tablist" aria-label="Code delivery method">
+                  <button type="button" role="tab" aria-selected={otpChannel === 'phone'} className={otpChannel === 'phone' ? 'active' : ''} disabled={busy} onClick={() => changeOtpChannel('phone')}><Phone size={14}/> Mobile number</button>
+                  <button type="button" role="tab" aria-selected={otpChannel === 'email'} className={otpChannel === 'email' ? 'active' : ''} disabled={busy} onClick={() => changeOtpChannel('email')}><Mail size={14}/> Email</button>
                 </div>
-                <input type="password" minLength={6} value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required placeholder="At least 6 characters"/>
-              </label>
-            )}
-
-            {error && <div className="inline-alert" role="alert">{error}</div>}
-            {success && <div className="inline-alert" style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', color: '#047857' }} role="status">{success}</div>}
-
-            <Button type="submit" disabled={busy} className="full-width">
-              {busy ? 'One moment…' : mode === 'signin' ? 'Sign in to Wayfare' : mode === 'signup' ? 'Create your account' : mode === 'forgot' ? 'Send reset link' : 'Update password'} <ArrowRight size={16}/>
-            </Button>
-
-            {(mode === 'forgot' || mode === 'reset') && (
-              <button type="button" style={{ background: 'none', border: 'none', padding: '8px 0', color: 'inherit', opacity: 0.8, fontSize: '0.85rem', cursor: 'pointer', textAlign: 'center' }} onClick={() => { setMode('signin'); setError(''); setSuccess(''); }}>
-                ← Back to sign in
-              </button>
-            )}
-          </form>
+              )}
+              <form onSubmit={otpStep === 'identifier' ? requestOtp : verifyOtp} className="auth-form" noValidate>
+                {otpStep === 'identifier' ? (
+                  <>
+                    {otpChannel === 'phone' ? (
+                      <label className="input-field">
+                        <span>Mobile number</span>
+                        <input type="tel" inputMode="tel" autoComplete="tel" value={identifier} onChange={(e) => setIdentifier(e.target.value)} disabled={busy} required placeholder="+91 98765 43210" aria-label="Mobile number with country code"/>
+                      </label>
+                    ) : (
+                      <label className="input-field">
+                        <span>Email address</span>
+                        <input type="email" inputMode="email" autoComplete="email" value={identifier} onChange={(e) => setIdentifier(e.target.value)} disabled={busy} required placeholder="you@example.com"/>
+                      </label>
+                    )}
+                    <label className="input-field">
+                      <span>Your name <small>(for a new account)</small></span>
+                      <input value={fullName} onChange={(e) => setFullName(e.target.value)} disabled={busy} autoComplete="name" maxLength={100} placeholder="e.g. Avery Rao"/>
+                    </label>
+                    {error && <div className="inline-alert" role="alert">{error}</div>}
+                    <Button type="submit" disabled={busy} className="full-width">
+                      {busy ? 'Sending code…' : 'Continue'} <ArrowRight size={16}/>
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <label className="input-field">
+                      <span>One-time code</span>
+                      <input className="otp-code-input" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,8}" minLength={6} maxLength={8} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 8))} disabled={busy} required placeholder="Enter your code" aria-label="One-time verification code"/>
+                    </label>
+                    {error && <div className="inline-alert" role="alert">{error}</div>}
+                    {success && <div className="inline-alert" role="status">{success}</div>}
+                    <Button type="submit" disabled={busy} className="full-width">
+                      {busy ? 'Verifying…' : 'Verify and continue'} <ArrowRight size={16}/>
+                    </Button>
+                    <div className="otp-step-actions">
+                      <button type="button" className="auth-text-button" disabled={busy} onClick={() => { setOtpStep('identifier'); setOtp(''); clearMessages(); setResendCooldown(0); }}><ArrowLeft size={14}/> Change {otpChannel === 'phone' ? 'mobile number' : 'email'}</button>
+                      <button type="button" className="auth-text-button" disabled={busy || resendCooldown > 0} onClick={() => void requestOtp()}><RefreshCw size={13}/>{resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}</button>
+                    </div>
+                  </>
+                )}
+              </form>
+            </>
+          ) : (
+            <>
+              {(mode === 'signin' || mode === 'signup') && (
+                <div className="auth-mode">
+                  <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => { setMode('signin'); clearMessages(); }}>Sign in</button>
+                  <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); clearMessages(); }}>Create account</button>
+                </div>
+              )}
+              <form onSubmit={submit} className="auth-form">
+                {mode === 'signup' && (
+                  <label className="input-field"><span>Your full name</span><input value={name} onChange={e => setName(e.target.value)} autoComplete="name" required placeholder="e.g. Avery Rao"/></label>
+                )}
+                {(mode === 'signin' || mode === 'signup' || mode === 'forgot') && (
+                  <label className="input-field"><span>Email address</span><input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required placeholder="you@example.com"/></label>
+                )}
+                {(mode === 'signin' || mode === 'signup' || mode === 'reset') && (
+                  <label className="input-field">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>{mode === 'reset' ? 'New password' : 'Password'}</span>
+                      {mode === 'signin' && <button type="button" className="auth-text-button" onClick={() => { setMode('forgot'); clearMessages(); }}>Forgot password?</button>}
+                    </div>
+                    <input type="password" minLength={6} value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required placeholder="At least 6 characters"/>
+                  </label>
+                )}
+                {error && <div className="inline-alert" role="alert">{error}</div>}
+                {success && <div className="inline-alert" role="status">{success}</div>}
+                <Button type="submit" disabled={busy} className="full-width">
+                  {busy ? 'One moment…' : mode === 'signin' ? 'Sign in to Wayfare' : mode === 'signup' ? 'Create your account' : mode === 'forgot' ? 'Send reset link' : 'Update password'} <ArrowRight size={16}/>
+                </Button>
+                {(mode === 'forgot' || mode === 'reset') && <button type="button" className="auth-text-button auth-back-button" onClick={() => { setMode('signin'); clearMessages(); }}>← Back to sign in</button>}
+              </form>
+            </>
+          )}
 
           {!data.isBackendConfigured && (
             <div className="demo-actions">
@@ -353,7 +524,7 @@ function AdminPage({data}:any){
 function RouteContent(){
  const data=useCarpool() as any;const [path]=useLocation();
  if(path==='/auth')return <AuthPage data={data}/>;
- if(path!=='/'&&!data.user){
+ if(!data.user){
   if(data.loading)return <div className="skeleton-list"><div/><div/></div>;
   return <AuthPage data={data}/>;
  }
