@@ -53,6 +53,8 @@ export type CarpoolContextValue = {
   enterDemo: (role?: UserRole) => void;
   signUp: (email: string, password: string, fullName: string) => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<void>;
+  sendOtp: (channel: 'email' | 'phone', identifier: string, fullName?: string) => Promise<void>;
+  verifyOtp: (channel: 'email' | 'phone', identifier: string, token: string) => Promise<void>;
   signOut: () => Promise<void>;
   resetPasswordForEmail: (email: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
@@ -294,11 +296,7 @@ function ensureValidRide(input: CreateRideInput): void {
 
 export function CarpoolProvider({ children }: { children: ReactNode }) {
   const [demoState, setDemoState] = useState<DemoState>(() => loadDemoState());
-  const [user, setUser] = useState<CarpoolUser | null>(() =>
-    isSupabaseConfigured
-      ? null
-      : { id: demoState.profile.id, email: demoState.profile.email },
-  );
+  const [user, setUser] = useState<CarpoolUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(() =>
     isSupabaseConfigured ? null : demoState.profile,
   );
@@ -578,6 +576,12 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const handleAuthFailure = useCallback((caught: unknown): never => {
+    const message = caught instanceof Error ? caught.message : String(caught);
+    setError(message || 'Authentication could not be completed. Please try again.');
+    throw caught instanceof Error ? caught : new Error(message);
+  }, []);
+
   const requireUser = useCallback(() => {
     if (!user) throw new Error('Sign in to continue.');
     return user;
@@ -621,10 +625,10 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
           return false;
         }
       } catch (caught) {
-        return handleFailure(caught);
+        return handleAuthFailure(caught);
       }
     },
-    [handleFailure, loadLiveData],
+    [handleAuthFailure, loadLiveData],
   );
 
   const signIn = useCallback(
@@ -643,10 +647,59 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
           await loadLiveData(data.user.id, data.user.email ?? email);
         }
       } catch (caught) {
-        handleFailure(caught);
+        handleAuthFailure(caught);
       }
     },
-    [handleFailure, loadLiveData],
+    [handleAuthFailure, loadLiveData],
+  );
+
+  const sendOtp = useCallback(
+    async (channel: 'email' | 'phone', identifier: string, fullName = '') => {
+      if (!isSupabaseConfigured) {
+        throw new Error('Connect Supabase to use email or mobile verification codes.');
+      }
+      try {
+        const client = requireSupabase();
+        const options = {
+          shouldCreateUser: true,
+          ...(fullName.trim() ? { data: { full_name: fullName.trim() } } : {}),
+        };
+        const credentials = channel === 'email'
+          ? { email: identifier.trim().toLowerCase(), options }
+          : { phone: identifier, options };
+        const { error: otpError } = await client.auth.signInWithOtp(credentials);
+        if (otpError) throw otpError;
+      } catch (caught) {
+        handleAuthFailure(caught);
+      }
+    },
+    [handleAuthFailure],
+  );
+
+  const verifyOtp = useCallback(
+    async (channel: 'email' | 'phone', identifier: string, token: string) => {
+      if (!isSupabaseConfigured) {
+        throw new Error('Connect Supabase to verify email or mobile codes.');
+      }
+      try {
+        const client = requireSupabase();
+        const credentials = channel === 'email'
+          ? { email: identifier.trim().toLowerCase(), token: token.trim(), type: 'email' as const }
+          : { phone: identifier, token: token.trim(), type: 'sms' as const };
+        const { data, error: otpError } = await client.auth.verifyOtp(credentials);
+        if (otpError) throw otpError;
+        if (!data.user) throw new Error('The code was accepted but no authenticated user was returned.');
+        const activeUser = {
+          id: data.user.id,
+          email: data.user.email ?? (channel === 'email' ? identifier : ''),
+        };
+        setUser(activeUser);
+        await loadLiveData(activeUser.id, activeUser.email);
+      } catch (caught) {
+        handleAuthFailure(caught);
+      }
+    },
+    [handleAuthFailure, loadLiveData],
   );
 
   const signOut = useCallback(async () => {
@@ -1313,6 +1366,8 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
       enterDemo,
       signUp,
       signIn,
+      sendOtp,
+      verifyOtp,
       signOut,
       resetPasswordForEmail,
       updatePassword,
@@ -1348,6 +1403,8 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
       enterDemo,
       signUp,
       signIn,
+      sendOtp,
+      verifyOtp,
       signOut,
       resetPasswordForEmail,
       updatePassword,
