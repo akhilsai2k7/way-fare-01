@@ -3,13 +3,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { CarpoolProvider, useCarpool } from '@/lib/carpool-context';
+import { requireSupabase } from '@/lib/supabase/client';
 import {
   ArrowDownUp, ArrowLeft, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check,
-  CircleHelp, Clock3, Compass, CreditCard, Gauge, HeartHandshake,
-  CarFront, Inbox, Leaf, LogOut, Mail, MapPin, Menu, MessageCircle, MoreHorizontal, Navigation, Phone,
+  CircleHelp, Clock3, Compass, CreditCard, Gauge, HeartHandshake, MailCheck,
+  CarFront, Inbox, Leaf, LogOut, Mail, MapPin, Menu, MessageCircle, MoreHorizontal, Navigation, Phone, Smartphone,
   Plus, Search, Send, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Star,
-  Users, RefreshCw,
+  Users, RefreshCw, X,
 } from 'lucide-react';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
 
@@ -186,7 +188,7 @@ function SettingsPage({data}:any){
 function AuthPage({data}:any){
   const [params] = useState(() => new URLSearchParams(window.location.search));
   const isRecoveryInHash = typeof window !== 'undefined' && window.location.hash.includes('type=recovery');
-  const [mode, setMode] = useState<'signin'|'signup'|'forgot'|'reset'>(() => {
+  const [mode, setMode] = useState<'signin'|'forgot'|'reset'>(() => {
     if (params.get('mode') === 'reset' || isRecoveryInHash) return 'reset';
     return 'signin';
   });
@@ -201,8 +203,8 @@ function AuthPage({data}:any){
   const [resendCooldown, setResendCooldown] = useState(0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [resendingOtp, setResendingOtp] = useState(false);
   const submittingRef = useRef(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -215,6 +217,27 @@ function AuthPage({data}:any){
     }, 1000);
     return () => window.clearTimeout(timer);
   }, [resendCooldown]);
+
+  useEffect(() => {
+    if (mode !== 'reset') return;
+    const code = params.get('code');
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const accessToken = hashParams.get('access_token');
+    const refreshToken = hashParams.get('refresh_token');
+    const isRecovery = hashParams.get('type') === 'recovery';
+    if (code) {
+      void requireSupabase().auth.exchangeCodeForSession(code).then(({ error: exchangeError }) => {
+        if (exchangeError) setError('This password reset link is invalid or has expired. Request a new one.');
+      });
+    } else if (isRecovery && accessToken && refreshToken) {
+      void requireSupabase().auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      }).then(({ error: sessionError }) => {
+        if (sessionError) setError('This password reset link is invalid or has expired. Request a new one.');
+      });
+    }
+  }, [mode, params]);
 
   const clearMessages = () => {
     setError('');
@@ -230,14 +253,7 @@ function AuthPage({data}:any){
     setSuccess('');
     data.clearError();
     try {
-      if (mode === 'signup') {
-        const signedIn = await data.signUp(email, password, name);
-        if (!signedIn) {
-          setSuccess('Check your email to confirm your account, then sign in.');
-          return;
-        }
-        navigate('/dashboard');
-      } else if (mode === 'signin') {
+      if (mode === 'signin') {
         await data.signIn(email, password);
         navigate('/dashboard');
       } else if (mode === 'forgot') {
@@ -256,24 +272,36 @@ function AuthPage({data}:any){
     }
   };
 
-  const requestOtp = async (e?: FormEvent) => {
+  const requestOtp = async (e?: FormEvent, isResend = false) => {
     e?.preventDefault();
     if (submittingRef.current) return;
 
+    const phoneDigits = isResend && /^\+91\d{10}$/.test(identifier)
+      ? identifier.slice(3)
+      : identifier.trim();
     const normalizedIdentifier = otpChannel === 'email'
       ? identifier.trim().toLowerCase()
-      : identifier.trim().replace(/[\s().-]/g, '');
+      : `+91${phoneDigits}`;
+    if (otpChannel === 'email' && !fullName.trim()) {
+      setError('Enter your name.');
+      return;
+    }
     if (otpChannel === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedIdentifier)) {
       setError('Enter a valid email address.');
       return;
     }
-    if (otpChannel === 'phone' && !/^\+[1-9]\d{7,14}$/.test(normalizedIdentifier)) {
-      setError('Enter a valid number with country code, such as +91 98765 43210.');
+    if (otpChannel === 'phone' && !/^\d{10}$/.test(phoneDigits)) {
+      setError('Enter a valid 10-digit Indian mobile number.');
+      return;
+    }
+    if (otpChannel === 'phone' && !fullName.trim()) {
+      setError('Enter your name.');
       return;
     }
 
     submittingRef.current = true;
     setBusy(true);
+    setResendingOtp(isResend);
     clearMessages();
     data.clearError();
     try {
@@ -284,18 +312,24 @@ function AuthPage({data}:any){
       setResendCooldown(30);
       setSuccess(`A verification code was sent to ${normalizedIdentifier}.`);
     } catch (e: any) {
-      setError(e?.message || 'We could not send a verification code. Please try again.');
+      const message = String(e?.message || '');
+      setError(
+        otpChannel === 'phone' && /unsupported phone provider/i.test(message)
+          ? 'SMS OTP is not available because this Supabase project has no SMS provider configured. Configure a provider in Supabase Auth settings and try again. Supabase error: Unsupported phone provider.'
+          : message || 'We could not send a verification code. Please try again.',
+      );
     } finally {
       submittingRef.current = false;
       setBusy(false);
+      setResendingOtp(false);
     }
   };
 
   const verifyOtp = async (e: FormEvent) => {
     e.preventDefault();
     if (submittingRef.current) return;
-    if (!/^\d{6,8}$/.test(otp.trim())) {
-      setError('Enter the verification code from your message.');
+    if (!/^\d{6}$/.test(otp.trim())) {
+      setError(`Enter the 6-digit verification code from your ${otpChannel === 'email' ? 'email' : 'phone'}.`);
       return;
     }
 
@@ -307,7 +341,12 @@ function AuthPage({data}:any){
       await data.verifyOtp(otpChannel, identifier, otp.trim());
       navigate('/dashboard');
     } catch (e: any) {
-      setError(e?.message || 'That code could not be verified. Request a new code and try again.');
+      const message = String(e?.message || '');
+      setError(
+        /invalid|expired|otp|token/i.test(message)
+          ? `That code is invalid or has expired. Request a new code and try again. ${message}`
+          : message || 'That code could not be verified. Request a new code and try again.',
+      );
     } finally {
       submittingRef.current = false;
       setBusy(false);
@@ -325,6 +364,7 @@ function AuthPage({data}:any){
 
   const changeOtpChannel = (channel: 'phone'|'email') => {
     setOtpChannel(channel);
+    setIdentifier('');
     setOtpStep('identifier');
     setOtp('');
     setResendCooldown(0);
@@ -381,29 +421,29 @@ function AuthPage({data}:any){
           <div className="auth-panel-label"><ShieldCheck size={15}/><span>SECURE SIGN-IN</span></div>
           <div className="eyebrow">
             {authMethod === 'otp'
-              ? otpStep === 'verify' ? 'VERIFY YOUR ACCOUNT' : 'THE COMMUTE, SHARED'
-              : mode === 'signin' ? 'WELCOME BACK' : mode === 'signup' ? 'A BETTER WAY TO GO' : mode === 'forgot' ? 'ACCOUNT RECOVERY' : 'NEW CREDENTIALS'}
+              ? otpStep === 'verify' ? `${otpChannel === 'email' ? 'EMAIL' : 'PHONE'} VERIFICATION` : 'THE COMMUTE, SHARED'
+              : mode === 'signin' ? 'WELCOME BACK' : mode === 'forgot' ? 'ACCOUNT RECOVERY' : 'NEW CREDENTIALS'}
           </div>
           <h2>
             {authMethod === 'otp'
-              ? otpStep === 'verify' ? 'Enter your code.' : 'Good to see you.'
-              : mode === 'signin' ? 'Good to see you.' : mode === 'signup' ? 'Join the way there.' : mode === 'forgot' ? 'Reset password' : 'Set new password'}
+              ? otpStep === 'verify'
+                ? otpChannel === 'email' ? 'Verify Your Email Address' : 'Verify Your Phone Number'
+                : 'Good to see you.'
+              : mode === 'signin' ? 'Good to see you.' : mode === 'forgot' ? 'Reset password' : 'Set new password'}
           </h2>
           <p>
             {authMethod === 'otp'
               ? otpStep === 'verify'
-                ? `We sent a one-time code to ${identifier}.`
+                ? `Enter the 6-digit code sent to your ${otpChannel === 'email' ? 'email' : 'phone'}: ${identifier}.`
                 : 'Sign in or create an account with a one-time code.'
               : mode === 'signin'
                 ? 'Your next shared commute is just ahead.'
-                : mode === 'signup'
-                  ? 'Meet the people who are already heading your way.'
-                  : mode === 'forgot'
-                    ? 'Enter your email address to receive a secure recovery link.'
-                    : 'Choose a strong new password for your account.'}
+                : mode === 'forgot'
+                  ? 'Enter your email address to receive a secure recovery link.'
+                  : 'Choose a strong new password for your account.'}
           </p>
 
-          {(mode === 'signin' || mode === 'signup') && (
+          {mode === 'signin' && otpStep === 'identifier' && (
             <div className="auth-method-tabs" role="tablist" aria-label="Sign-in method">
               <button type="button" role="tab" aria-selected={authMethod === 'otp'} className={authMethod === 'otp' ? 'active' : ''} disabled={busy} onClick={() => changeAuthMethod('otp')}>One-time code</button>
               <button type="button" role="tab" aria-selected={authMethod === 'password'} className={authMethod === 'password' ? 'active' : ''} disabled={busy} onClick={() => changeAuthMethod('password')}>Password</button>
@@ -424,7 +464,7 @@ function AuthPage({data}:any){
                     {otpChannel === 'phone' ? (
                       <label className="input-field">
                         <span>Mobile number</span>
-                        <input type="tel" inputMode="tel" autoComplete="tel" value={identifier} onChange={(e) => setIdentifier(e.target.value)} disabled={busy} required placeholder="+91 98765 43210" aria-label="Mobile number with country code"/>
+                        <input type="tel" inputMode="numeric" autoComplete="tel-national" value={identifier} onChange={(e) => setIdentifier(e.target.value.replace(/\D/g, '').slice(0, 10))} disabled={busy} required placeholder="9581889452" aria-label="10-digit Indian mobile number" maxLength={10}/>
                       </label>
                     ) : (
                       <label className="input-field">
@@ -433,8 +473,8 @@ function AuthPage({data}:any){
                       </label>
                     )}
                     <label className="input-field">
-                      <span>Your name <small>(for a new account)</small></span>
-                      <input value={fullName} onChange={(e) => setFullName(e.target.value)} disabled={busy} autoComplete="name" maxLength={100} placeholder="e.g. Avery Rao"/>
+                      <span>Your name</span>
+                      <input value={fullName} onChange={(e) => setFullName(e.target.value)} disabled={busy} autoComplete="name" maxLength={100} required placeholder="e.g. Avery Rao"/>
                     </label>
                     {error && <div className="inline-alert" role="alert">{error}</div>}
                     <Button type="submit" disabled={busy} className="full-width">
@@ -442,40 +482,84 @@ function AuthPage({data}:any){
                     </Button>
                   </>
                 ) : (
-                  <>
-                    <label className="input-field">
-                      <span>One-time code</span>
-                      <input className="otp-code-input" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,8}" minLength={6} maxLength={8} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 8))} disabled={busy} required placeholder="Enter your code" aria-label="One-time verification code"/>
+                  <div className="auth-otp-screen">
+                    <div className="auth-otp-close-row">
+                      <button
+                        type="button"
+                        className="auth-otp-close"
+                        aria-label={`Close ${otpChannel === 'email' ? 'email' : 'phone'} verification`}
+                        disabled={busy}
+                        onClick={() => {
+                          if (otpChannel === 'phone') setIdentifier(identifier.replace(/^\+91/, ''));
+                          setOtpStep('identifier');
+                          setOtp('');
+                          setResendCooldown(0);
+                          clearMessages();
+                        }}
+                      >
+                        <X size={18}/>
+                      </button>
+                    </div>
+                    <div className="auth-otp-icon" aria-hidden="true">{otpChannel === 'email' ? <MailCheck size={27}/> : <Smartphone size={27}/>}</div>
+                    <label className="auth-otp-label" htmlFor="email-verification-code">
+                      6-digit verification code
                     </label>
+                    <InputOTP
+                      id="email-verification-code"
+                      aria-label="6-digit verification code"
+                      maxLength={6}
+                      value={otp}
+                      onChange={(value) => setOtp(value.replace(/\D/g, '').slice(0, 6))}
+                      disabled={busy}
+                      containerClassName="auth-otp-input"
+                    >
+                      <InputOTPGroup className="auth-otp-group">
+                        {Array.from({ length: 6 }, (_, index) => (
+                          <InputOTPSlot key={index} index={index} className="auth-otp-slot"/>
+                        ))}
+                      </InputOTPGroup>
+                    </InputOTP>
                     {error && <div className="inline-alert" role="alert">{error}</div>}
                     {success && <div className="inline-alert" role="status">{success}</div>}
-                    <Button type="submit" disabled={busy} className="full-width">
-                      {busy ? 'Verifying…' : 'Verify and continue'} <ArrowRight size={16}/>
+                    <Button type="submit" disabled={busy || otp.length !== 6} className="full-width otp-verify-button">
+                      {busy ? 'Verifying…' : otpChannel === 'email' ? 'Verify Email' : 'Verify Phone'} <ArrowRight size={16}/>
                     </Button>
-                    <div className="otp-step-actions">
-                      <button type="button" className="auth-text-button" disabled={busy} onClick={() => { setOtpStep('identifier'); setOtp(''); clearMessages(); setResendCooldown(0); }}><ArrowLeft size={14}/> Change {otpChannel === 'phone' ? 'mobile number' : 'email'}</button>
-                      <button type="button" className="auth-text-button" disabled={busy || resendCooldown > 0} onClick={() => void requestOtp()}><RefreshCw size={13}/>{resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}</button>
+                    <div className="auth-otp-change">
+                      {otpChannel === 'email' && <span>Want to Change Your Email Address?</span>}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          if (otpChannel === 'phone') setIdentifier(identifier.replace(/^\+91/, ''));
+                          setOtpStep('identifier');
+                          setOtp('');
+                          setResendCooldown(0);
+                          clearMessages();
+                        }}
+                      >
+                        {otpChannel === 'phone' ? 'Change Number' : 'Change Here'}
+                      </button>
                     </div>
-                  </>
+                    <button
+                      type="button"
+                      className="auth-otp-resend"
+                      disabled={busy || resendCooldown > 0}
+                      onClick={() => void requestOtp(undefined, true)}
+                    >
+                      <RefreshCw size={14}/>
+                      {resendingOtp ? 'Sending code…' : resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : 'Resend Code'}
+                    </button>
+                  </div>
                 )}
               </form>
             </>
           ) : (
             <>
-              {(mode === 'signin' || mode === 'signup') && (
-                <div className="auth-mode">
-                  <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => { setMode('signin'); clearMessages(); }}>Sign in</button>
-                  <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); clearMessages(); }}>Create account</button>
-                </div>
-              )}
               <form onSubmit={submit} className="auth-form">
-                {mode === 'signup' && (
-                  <label className="input-field"><span>Your full name</span><input value={name} onChange={e => setName(e.target.value)} autoComplete="name" required placeholder="e.g. Avery Rao"/></label>
-                )}
-                {(mode === 'signin' || mode === 'signup' || mode === 'forgot') && (
+                {(mode === 'signin' || mode === 'forgot') && (
                   <label className="input-field"><span>Email address</span><input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required placeholder="you@example.com"/></label>
                 )}
-                {(mode === 'signin' || mode === 'signup' || mode === 'reset') && (
+                {(mode === 'signin' || mode === 'reset') && (
                   <label className="input-field">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>{mode === 'reset' ? 'New password' : 'Password'}</span>
@@ -487,7 +571,7 @@ function AuthPage({data}:any){
                 {error && <div className="inline-alert" role="alert">{error}</div>}
                 {success && <div className="inline-alert" role="status">{success}</div>}
                 <Button type="submit" disabled={busy} className="full-width">
-                  {busy ? 'One moment…' : mode === 'signin' ? 'Sign in to Wayfare' : mode === 'signup' ? 'Create your account' : mode === 'forgot' ? 'Send reset link' : 'Update password'} <ArrowRight size={16}/>
+                  {busy ? 'One moment…' : mode === 'signin' ? 'Sign in to Wayfare' : mode === 'forgot' ? 'Send reset link' : 'Update password'} <ArrowRight size={16}/>
                 </Button>
                 {(mode === 'forgot' || mode === 'reset') && <button type="button" className="auth-text-button auth-back-button" onClick={() => { setMode('signin'); clearMessages(); }}>← Back to sign in</button>}
               </form>

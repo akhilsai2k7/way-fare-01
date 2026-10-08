@@ -51,7 +51,6 @@ export type CarpoolContextValue = {
   isBackendConfigured: boolean;
   clearError: () => void;
   enterDemo: (role?: UserRole) => void;
-  signUp: (email: string, password: string, fullName: string) => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<void>;
   sendOtp: (channel: 'email' | 'phone', identifier: string, fullName?: string) => Promise<void>;
   verifyOtp: (channel: 'email' | 'phone', identifier: string, token: string) => Promise<void>;
@@ -140,6 +139,11 @@ function mapProfile(row: DbProfile): Profile {
     preferredTransport: row.preferred_transport ?? undefined,
     role: row.role,
   };
+}
+
+function getUserFullName(metadata: Record<string, unknown> | undefined): string {
+  const name = metadata?.name ?? metadata?.full_name;
+  return typeof name === 'string' ? name : '';
 }
 
 function mapRide(row: DbRide): Ride {
@@ -340,7 +344,7 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
     setBlockedUserIds(next.blockedUserIds);
   }, []);
 
-  const loadLiveData = useCallback(async (userId: string, email: string) => {
+  const loadLiveData = useCallback(async (userId: string, email: string, fullName = '') => {
     const client = requireSupabase();
     setLoading(true);
     setError(null);
@@ -356,12 +360,23 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
       if (!profileResult.data) {
         const { error: createProfileError } = await client.from('profiles').insert({
           id: userId,
-          full_name: '',
+          full_name: fullName.trim(),
           email,
           role: 'PASSENGER',
           is_verified: false,
         });
         if (createProfileError) throw createProfileError;
+        profileResult = await client
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+      } else if (!profileResult.data.full_name?.trim() && fullName.trim()) {
+        const { error: updateProfileError } = await client
+          .from('profiles')
+          .update({ full_name: fullName.trim() })
+          .eq('id', userId);
+        if (updateProfileError) throw updateProfileError;
         profileResult = await client
           .from('profiles')
           .select('*')
@@ -503,7 +518,13 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
     if (!client) return;
     let alive = true;
 
-    const setSession = async (sessionUser: { id: string; email?: string } | null) => {
+    const setSession = async (
+      sessionUser: {
+        id: string;
+        email?: string;
+        user_metadata?: Record<string, unknown>;
+      } | null,
+    ) => {
       if (!alive) return;
       if (!sessionUser) {
         setUser(null);
@@ -522,7 +543,11 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
       const activeUser = { id: sessionUser.id, email: sessionUser.email ?? '' };
       setUser(activeUser);
       try {
-        await loadLiveData(activeUser.id, activeUser.email);
+        await loadLiveData(
+          activeUser.id,
+          activeUser.email,
+          getUserFullName(sessionUser.user_metadata),
+        );
       } catch {
         // loadLiveData records the safe error for the UI.
       }
@@ -603,34 +628,6 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
     [demoState, persistDemo],
   );
 
-  const signUp = useCallback(
-    async (email: string, password: string, fullName: string) => {
-      if (!isSupabaseConfigured) {
-        setError('Connect Supabase to create a real account. Demo mode uses local sample data only.');
-        throw new Error('Connect Supabase to create a real account. Demo mode uses local sample data only.');
-      }
-      try {
-        const client = requireSupabase();
-        const { data, error: authError } = await client.auth.signUp({
-          email: email.trim(),
-          password,
-          options: { data: { full_name: fullName.trim() } },
-        });
-        if (authError) throw authError;
-        if (data.user && data.session) {
-          await loadLiveData(data.user.id, data.user.email ?? email);
-          return true;
-        } else {
-          setError('Check your email to confirm your account, then sign in.');
-          return false;
-        }
-      } catch (caught) {
-        return handleAuthFailure(caught);
-      }
-    },
-    [handleAuthFailure, loadLiveData],
-  );
-
   const signIn = useCallback(
     async (email: string, password: string) => {
       if (!isSupabaseConfigured) {
@@ -644,7 +641,11 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
         if (authError) throw authError;
         if (data.user) {
           setUser({ id: data.user.id, email: data.user.email ?? email });
-          await loadLiveData(data.user.id, data.user.email ?? email);
+          await loadLiveData(
+            data.user.id,
+            data.user.email ?? email,
+            getUserFullName(data.user.user_metadata),
+          );
         }
       } catch (caught) {
         handleAuthFailure(caught);
@@ -662,7 +663,7 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
         const client = requireSupabase();
         const options = {
           shouldCreateUser: true,
-          ...(fullName.trim() ? { data: { full_name: fullName.trim() } } : {}),
+          data: { name: fullName.trim() },
         };
         const credentials = channel === 'email'
           ? { email: identifier.trim().toLowerCase(), options }
@@ -694,7 +695,11 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
           email: data.user.email ?? (channel === 'email' ? identifier : ''),
         };
         setUser(activeUser);
-        await loadLiveData(activeUser.id, activeUser.email);
+        await loadLiveData(
+          activeUser.id,
+          activeUser.email,
+          getUserFullName(data.user.user_metadata),
+        );
       } catch (caught) {
         handleAuthFailure(caught);
       }
@@ -1364,7 +1369,6 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
       isBackendConfigured: isSupabaseConfigured,
       clearError: () => setError(null),
       enterDemo,
-      signUp,
       signIn,
       sendOtp,
       verifyOtp,
@@ -1401,7 +1405,6 @@ export function CarpoolProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       enterDemo,
-      signUp,
       signIn,
       sendOtp,
       verifyOtp,

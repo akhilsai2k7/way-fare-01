@@ -700,6 +700,22 @@ body { min-width: 320px; }
 .auth-form-wrap .button-primary { min-height:45px; border:0; border-radius:6px; background:#285a45; color:#f8f7ed; font-size:11px; box-shadow:0 4px 10px #214a3820; }.auth-form-wrap .button-primary:hover:not(:disabled) { background:#1d4938; }.auth-form-wrap .button-primary:disabled { opacity:.65; }
 .auth-form-wrap .inline-alert { padding:10px 12px; border-radius:6px; font-size:10px; line-height:1.5; }
 .auth-step-actions,.auth-form-wrap .otp-step-actions { gap:10px; margin-top:1px; }.auth-form-wrap .auth-text-button { min-height:28px; color:#4b7357; font-size:10px; }.auth-form-wrap .auth-text-button:disabled { color:#9ba598; }
+.auth-otp-screen { display:grid; justify-items:center; gap:15px; text-align:center; }
+.auth-otp-close-row { display:flex; justify-content:flex-end; width:100%; margin-top:-14px; }
+.auth-otp-close { display:grid; place-items:center; width:34px; height:34px; border:0; border-radius:50%; background:transparent; color:#78867b; cursor:pointer; }
+.auth-otp-close:hover:not(:disabled) { background:#eef2eb; color:#315746; }
+.auth-otp-close:disabled,.auth-otp-change button:disabled,.auth-otp-resend:disabled { cursor:not-allowed; opacity:.6; }
+.auth-otp-icon { display:grid; place-items:center; width:62px; height:62px; margin-top:-8px; border-radius:50%; background:#f7eadb; color:#d77936; }
+.auth-otp-label { color:#526758; font-size:11px; font-weight:600; }
+.auth-form-wrap .auth-otp-input { justify-content:center; width:100%; }
+.auth-form-wrap .auth-otp-group { justify-content:center; gap:8px; }
+.auth-form-wrap .auth-otp-slot { width:48px; height:54px; border:1px solid #dfe5dc; border-radius:7px; background:#fff; color:#294638; font-size:21px; font-weight:600; }
+.auth-form-wrap .auth-otp-slot[data-active="true"] { border-color:#d77936; box-shadow:0 0 0 3px #d779361a; }
+.auth-form-wrap .otp-verify-button { min-height:46px; border:0; border-radius:6px; background:#e47a32; color:#fffaf4; font-size:11px; box-shadow:0 4px 10px #a64e2020; }
+.auth-form-wrap .otp-verify-button:hover:not(:disabled) { background:#cf6727; }
+.auth-otp-change { display:flex; flex-wrap:wrap; justify-content:center; gap:4px; color:#758276; font-size:10px; }
+.auth-otp-change button,.auth-otp-resend { display:inline-flex; align-items:center; gap:5px; padding:0; border:0; background:transparent; color:#ba642c; font-size:10px; font-weight:650; cursor:pointer; }
+.auth-otp-resend { color:#4b7357; }
 .auth-form-wrap .demo-actions { margin-top:20px; padding-top:15px; border-color:#e5e9e1; }.auth-form-wrap .demo-actions .button-soft { background:#f2f5ef; border-color:#dce6d8; color:#43634b; }
 .auth-form-wrap .auth-terms { color:#858f83; font-size:9px; }.auth-form-wrap .auth-mode-status { margin-top:13px; }
 .auth-mobile-brand { display:none; }
