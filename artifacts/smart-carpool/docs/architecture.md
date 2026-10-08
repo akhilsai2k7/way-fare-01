@@ -30,6 +30,17 @@ in user's session. There is no service-role key in the frontend.
    browser `localStorage`. It does not fall back to that store after a live
    Supabase error.
 
+## Authentication
+
+New accounts and email sign-in use Supabase email OTP: the app requests a code
+with `signInWithOtp` and creates a session only after `verifyOtp` succeeds.
+The submitted name is stored in auth metadata and copied into the Wayfare
+profile during profile setup. Email OTP templates in the Supabase dashboard
+must display `{{ .Token }}` and omit `{{ .ConfirmationURL }}` so the message
+does not offer a link that can authenticate the user. URL-based session
+detection is disabled in the browser client; password reset links are handled
+explicitly on the reset screen. Existing password sign-in remains available.
+
 ## Main areas
 
 - `src/App.tsx`: routes, forms, dashboards, and interaction UI.
